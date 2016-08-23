@@ -63,7 +63,7 @@ func NewValidateSessionStateTest() *ValidateSessionStateTest {
 	backend_url, _ := url.Parse(vt_test.backend.URL)
 	vt_test.provider = &ValidateSessionStateTestProvider{
 		ProviderData: &ProviderData{
-			ValidateUrl: &url.URL{
+			ValidateURL: &url.URL{
 				Scheme: "http",
 				Host:   backend_url.Host,
 				Path:   "/oauth/tokeninfo",
@@ -99,10 +99,10 @@ func TestValidateSessionStateEmptyToken(t *testing.T) {
 	assert.Equal(t, false, validateToken(vt_test.provider, "", nil))
 }
 
-func TestValidateSessionStateEmptyValidateUrl(t *testing.T) {
+func TestValidateSessionStateEmptyValidateURL(t *testing.T) {
 	vt_test := NewValidateSessionStateTest()
 	defer vt_test.Close()
-	vt_test.provider.Data().ValidateUrl = nil
+	vt_test.provider.Data().ValidateURL = nil
 	assert.Equal(t, false, validateToken(vt_test.provider, "foobar", nil))
 }
 
@@ -118,4 +118,15 @@ func TestValidateSessionStateExpiredToken(t *testing.T) {
 	defer vt_test.Close()
 	vt_test.response_code = 401
 	assert.Equal(t, false, validateToken(vt_test.provider, "foobar", nil))
+}
+
+func TestStripTokenNotPresent(t *testing.T) {
+	test := "http://local.test/api/test?a=1&b=2"
+	assert.Equal(t, test, stripToken(test))
+}
+
+func TestStripToken(t *testing.T) {
+	test := "http://local.test/api/test?access_token=deadbeef&b=1&c=2"
+	expected := "http://local.test/api/test?access_token=dead...&b=1&c=2"
+	assert.Equal(t, expected, stripToken(test))
 }

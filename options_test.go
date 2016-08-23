@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto"
+	"fmt"
 	"net/url"
 	"strings"
 	"testing"
@@ -73,16 +75,16 @@ func TestInitializedOptions(t *testing.T) {
 
 // Note that it's not worth testing nonparseable URLs, since url.Parse()
 // seems to parse damn near anything.
-func TestRedirectUrl(t *testing.T) {
+func TestRedirectURL(t *testing.T) {
 	o := testOptions()
-	o.RedirectUrl = "https://myhost.com/oauth2/callback"
+	o.RedirectURL = "https://myhost.com/oauth2/callback"
 	assert.Equal(t, nil, o.Validate())
 	expected := &url.URL{
 		Scheme: "https", Host: "myhost.com", Path: "/oauth2/callback"}
-	assert.Equal(t, expected, o.redirectUrl)
+	assert.Equal(t, expected, o.redirectURL)
 }
 
-func TestProxyUrls(t *testing.T) {
+func TestProxyURLs(t *testing.T) {
 	o := testOptions()
 	o.Upstreams = append(o.Upstreams, "http://127.0.0.1:8081")
 	assert.Equal(t, nil, o.Validate())
@@ -91,7 +93,7 @@ func TestProxyUrls(t *testing.T) {
 		// note the '/' was added
 		&url.URL{Scheme: "http", Host: "127.0.0.1:8081", Path: "/"},
 	}
-	assert.Equal(t, expected, o.proxyUrls)
+	assert.Equal(t, expected, o.proxyURLs)
 }
 
 func TestCompiledRegex(t *testing.T) {
@@ -125,10 +127,10 @@ func TestDefaultProviderApiSettings(t *testing.T) {
 	assert.Equal(t, nil, o.Validate())
 	p := o.provider.Data()
 	assert.Equal(t, "https://accounts.google.com/o/oauth2/auth?access_type=offline",
-		p.LoginUrl.String())
+		p.LoginURL.String())
 	assert.Equal(t, "https://www.googleapis.com/oauth2/v3/token",
-		p.RedeemUrl.String())
-	assert.Equal(t, "", p.ProfileUrl.String())
+		p.RedeemURL.String())
+	assert.Equal(t, "", p.ProfileURL.String())
 	assert.Equal(t, "profile email", p.Scope)
 }
 
@@ -159,10 +161,73 @@ func TestCookieRefreshMustBeLessThanCookieExpire(t *testing.T) {
 	o := testOptions()
 	assert.Equal(t, nil, o.Validate())
 
-	o.CookieSecret = "0123456789abcdef"
+	o.CookieSecret = "0123456789abcdefabcd"
 	o.CookieRefresh = o.CookieExpire
 	assert.NotEqual(t, nil, o.Validate())
 
 	o.CookieRefresh -= time.Duration(1)
 	assert.Equal(t, nil, o.Validate())
+}
+
+func TestBase64CookieSecret(t *testing.T) {
+	o := testOptions()
+	assert.Equal(t, nil, o.Validate())
+
+	// 32 byte, base64 (urlsafe) encoded key
+	o.CookieSecret = "yHBw2lh2Cvo6aI_jn_qMTr-pRAjtq0nzVgDJNb36jgQ="
+	assert.Equal(t, nil, o.Validate())
+
+	// 32 byte, base64 (urlsafe) encoded key, w/o padding
+	o.CookieSecret = "yHBw2lh2Cvo6aI_jn_qMTr-pRAjtq0nzVgDJNb36jgQ"
+	assert.Equal(t, nil, o.Validate())
+
+	// 24 byte, base64 (urlsafe) encoded key
+	o.CookieSecret = "Kp33Gj-GQmYtz4zZUyUDdqQKx5_Hgkv3"
+	assert.Equal(t, nil, o.Validate())
+
+	// 16 byte, base64 (urlsafe) encoded key
+	o.CookieSecret = "LFEqZYvYUwKwzn0tEuTpLA=="
+	assert.Equal(t, nil, o.Validate())
+
+	// 16 byte, base64 (urlsafe) encoded key, w/o padding
+	o.CookieSecret = "LFEqZYvYUwKwzn0tEuTpLA"
+	assert.Equal(t, nil, o.Validate())
+}
+
+func TestValidateSignatureKey(t *testing.T) {
+	o := testOptions()
+	o.SignatureKey = "sha1:secret"
+	assert.Equal(t, nil, o.Validate())
+	assert.Equal(t, o.signatureData.hash, crypto.SHA1)
+	assert.Equal(t, o.signatureData.key, "secret")
+}
+
+func TestValidateSignatureKeyInvalidSpec(t *testing.T) {
+	o := testOptions()
+	o.SignatureKey = "invalid spec"
+	err := o.Validate()
+	assert.Equal(t, err.Error(), "Invalid configuration:\n"+
+		"  invalid signature hash:key spec: "+o.SignatureKey)
+}
+
+func TestValidateSignatureKeyUnsupportedAlgorithm(t *testing.T) {
+	o := testOptions()
+	o.SignatureKey = "unsupported:default secret"
+	err := o.Validate()
+	assert.Equal(t, err.Error(), "Invalid configuration:\n"+
+		"  unsupported signature hash algorithm: "+o.SignatureKey)
+}
+
+func TestValidateCookie(t *testing.T) {
+	o := testOptions()
+	o.CookieName = "_valid_cookie_name"
+	assert.Equal(t, nil, o.Validate())
+}
+
+func TestValidateCookieBadName(t *testing.T) {
+	o := testOptions()
+	o.CookieName = "_bad_cookie_name{}"
+	err := o.Validate()
+	assert.Equal(t, err.Error(), "Invalid configuration:\n"+
+		fmt.Sprintf("  invalid cookie name: %q", o.CookieName))
 }
